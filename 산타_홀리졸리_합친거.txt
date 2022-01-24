@@ -1,0 +1,1995 @@
+/*******************************************************************************
+* Copyright 2017 ROBOTIS CO., LTD.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+/* Author: Ryu Woon Jung (Leon) */
+
+//
+// *********     Sync Read and Sync Write Example      *********
+//
+//
+// Available Dynamixel model on this example : All models using Protocol 2.0
+// This example is designed for using two Dynamixel PRO 54-200, and an USB2DYNAMIXEL.
+// To use another Dynamixel model, such as X series, see their details in E-Manual(emanual.robotis.com) and edit below variables yourself.
+// Be sure that Dynamixel PRO properties are already set as %% ID : 1 / Baudnum : 1 (Baudrate : 57600)
+//
+
+using System;
+using System.Runtime.InteropServices;
+using dynamixel_sdk;
+using System.IO;
+using System.Net;
+using System.Timers;
+
+namespace sync_write
+{
+
+    class SyncWrite
+    {
+        //private static Timer aTimer;
+        public const int ADDR_PRO_LED_RED = 563;
+        // Control table address
+        public const int ADDR_PRO_TORQUE_ENABLE = 64;                  // Control table address is different in Dynamixel model
+        public const int ADDR_PRO_GOAL_POSITION = 116;
+        public const int ADDR_PRO_PRESENT_POSITION = 132;
+        public const int ADDR_PRO_GOAL_VELOCITY = 112;
+
+        public const int LEN_PRO_LED_RED = 1;
+        // Data Byte Length
+        public const int LEN_PRO_GOAL_POSITION = 4;
+        public const int LEN_PRO_PRESENT_POSITION = 4;
+        public const int LEN_PRO_GOAL_VELOCITY = 4;
+
+        // Protocol version
+        public const int PROTOCOL_VERSION = 2;                   // See which protocol version is used in the Dynamixel
+
+        // Default setting
+        public const int DXL1_ID = 1;
+        public const int DXL2_ID = 2;
+        public const int DXL3_ID = 3;
+        public const int DXL4_ID = 4;
+        public const int DXL5_ID = 5;                   // Dynamixel ID: 5
+        public const int DXL6_ID = 6;
+        public const int DXL9_ID = 9;                   // Dynamixel ID: 9
+        public const int DXL10_ID = 10;
+
+        // initial setting value
+        public const int SET1 = 960;
+        public const int SET2 = 2000;
+        public const int SET3 = 1412;
+        public const int SET4 = 1515;
+        public const int SET5 = 3011;
+        public const int SET6 = 4115;
+        public const int SET9 = 2012;
+        public const int SET10 = 3050;
+        public const int d_time = 1330;
+
+
+
+        public const int BAUDRATE = 1000000;
+        public const string DEVICENAME = "COM4";              // Check which port is being used on your controller
+                                                              // ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
+
+        public const int TORQUE_ENABLE = 1;                   // Value for enabling the torque
+        public const int TORQUE_DISABLE = 0;                   // Value for disabling the torque
+
+        public const int DXL_MINIMUM_POSITION_VALUE = 1000;//-150000;             // Dynamixel will rotate between this value
+        public const int DXL_MAXIMUM_POSITION_VALUE = 3000;//150000;              // and this value (note that the Dynamixel would not move when the position value is out of movable range. Check e-manual about the range of the Dynamixel you use.)
+
+        public const int DXL_MINIMUM_POSITION_VALUE1 = 0;
+        public const int DXL_MAXIMUM_POSITION_VALUE1 = 2000;
+
+        public const int DXL_MOVING_STATUS_THRESHOLD = 20;
+        public const int DXL_GOAL_VEL = 150;
+        // Dynamixel moving status threshold
+
+        public const int up_position = SET10;
+        public const int down_position = 2600;
+        public const int dxl_5_turn_left = SET5 - 800;
+        public const int dxl_5_turn_right = SET5 + 800;
+        public const int dxl_9_turn_left = SET9 - 800;
+        public const int dxl_9_turn_right = SET9 + 800;
+        public const int dxl_3_turn_left = SET3 - 400;
+        public const int dxl_3_turn_right = SET3 + 400;
+        public const int dxl_2_turn_left = SET2;
+        public const int dxl_2_turn_right = SET2 + 400;
+
+
+        public const int DXL_LEFT_POSITION = 1365;
+        public const int DXL_WRITE_POSITION = 683;
+
+
+
+        public const byte ESC_ASCII_VALUE = 0x1b;
+
+        public const int COMM_SUCCESS = 0;                   // Communication Success result value
+        public const int COMM_TX_FAIL = -1001;               // Communication Tx Failed
+
+        private static DateTime Delay(int MS)
+        {
+            // Thread 와 Timer보다 효율 적으로 사용할 수 있음.
+            DateTime ThisMoment = DateTime.Now;
+            TimeSpan duration = new TimeSpan(0, 0, 0, 0, MS);
+            DateTime AfterWards = ThisMoment.Add(duration);
+
+            while (AfterWards >= ThisMoment)
+            {
+                ThisMoment = DateTime.Now;
+            }
+            return DateTime.Now;
+        }
+        static void Prpesent_position_value(int port_num, int groupread_num, bool dxl_addparam_result)
+        {
+            //**********************************************************************
+            // Initialize GroupBulkWrite Struct
+            int groupwrite_num1 = dynamixel.groupBulkWrite(port_num, PROTOCOL_VERSION);
+
+            // Initialize Groupbulkread Structs
+            int groupread_num1 = dynamixel.groupBulkRead(port_num, PROTOCOL_VERSION);
+
+            // Add parameter storage for Dynamixel#1 present position value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL1_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL2_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL3_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL3_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL4_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL4_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL5_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL6_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL6_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL9_ID);
+                return;
+            }
+
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL10_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#1 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL1_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL1_ID);
+                return;
+            }
+
+
+            // Add parameter storage for Dynamixel#2 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL2_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL2_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#3 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL3_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL3_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#4 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL4_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL4_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#5 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL5_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL5_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#6 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL6_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL6_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#9 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL9_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL9_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#10 present moving value
+            dxl_addparam_result = dynamixel.groupBulkReadAddParam(groupread_num, DXL10_ID, ADDR_PRO_LED_RED, LEN_PRO_LED_RED);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkRead addparam failed", DXL10_ID);
+                return;
+            }
+        }
+        static void Initialized_start(int groupread_num, bool dxl_addparam_result, int groupwrite_num, int port_num, int groupwritegreeting_num)
+        {
+
+
+            //**********************************************************************
+            // Initialize GroupBulkWrite Struct
+
+
+            // Add parameter storage for Dynamixel#1 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#2 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+
+            //dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            // Add parameter storage for Dynamixel#3 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET3, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#4 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL4_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET4, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL4_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#5 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#6 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL6_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET6, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL6_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#9 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#10 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                return;
+            }
+
+
+            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+            Delay(1000);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, 60);
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2818, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+            dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+
+            Delay(1000);
+
+            dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2073, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+            dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+            dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            //**********************************************************************
+
+        }
+
+        static void Initialized_end(int groupread_num, bool dxl_addparam_result, int groupwrite_num, int port_num, int groupwritegreeting_num)
+        {
+
+
+            //**********************************************************************
+            // Initialize GroupBulkWrite Struct
+
+
+            // Add parameter storage for Dynamixel#1 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#2 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+
+            //dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            // Add parameter storage for Dynamixel#3 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET3, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#4 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL4_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET4, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL4_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#5 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#6 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL6_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET6, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL6_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#9 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#10 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                return;
+            }
+
+
+
+            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            //**********************************************************************
+
+        }
+        static void Torque(int port_num, int groupread_num, byte dxl_error, int dxl_comm_result)
+        {
+            // Enable Dynamixel#1 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL1_ID);
+            }
+
+            // Enable Dynamixel#2 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL2_ID);
+            }
+
+            // Enable Dynamixel#3 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL3_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL3_ID);
+            }
+
+            // Enable Dynamixel#4 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL4_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL4_ID);
+            }
+
+            // Enable Dynamixel#5 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL5_ID);
+            }
+
+
+            // Enable Dynamixel#6 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL6_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL6_ID);
+            }
+
+
+
+
+
+            // Enable Dynamixel#9 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL9_ID);
+            }
+
+            // Enable Dynamixel#10 Torque
+            dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL10_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_ENABLE);
+            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+            }
+            else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+            {
+                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+            }
+            else
+            {
+                Console.WriteLine("Dynamixel{0} has been successfully connected ", DXL10_ID);
+            }
+
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL3_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL4_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL6_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL10_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+        }
+
+
+        static void Main(string[] args)
+        {
+
+            int port_num = dynamixel.portHandler(DEVICENAME);
+
+            // Initialize PacketHandler Structs
+            dynamixel.packetHandler();
+
+            // Initialize Groupsyncwrite instance
+            int groupwrite_num = dynamixel.groupSyncWrite(port_num, PROTOCOL_VERSION, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION);
+            int groupwritegreeting_num = dynamixel.groupSyncWrite(port_num, PROTOCOL_VERSION, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION);
+            int groupwritesolo_num = dynamixel.groupSyncWrite(port_num, PROTOCOL_VERSION, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION);
+
+            int[] dxl_goal_position = new int[2] { DXL_MINIMUM_POSITION_VALUE, DXL_MAXIMUM_POSITION_VALUE }; // Goal position
+            int[] dxl_goal_position1 = new int[2] { DXL_MINIMUM_POSITION_VALUE1, DXL_MAXIMUM_POSITION_VALUE1 }; // Goal position
+            int[] dxl_goal_position2 = new int[2] { DXL_LEFT_POSITION, DXL_WRITE_POSITION };
+            int[] dxl_goal_position_solo = new int[2] { 1750, 2250 };
+            int[] dxl_goal_position_setting = new int[8] { SET1, SET2, SET3, SET4, SET5, SET6, SET9, SET10 };
+
+
+            // Initialize Groupsyncread Structs for Present Position
+            int groupread_num = dynamixel.groupSyncRead(port_num, PROTOCOL_VERSION, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+            int index = 0, index2 = 0, index3 = 1;
+            int dxl_comm_result = COMM_TX_FAIL;                                   // Communication result
+            bool dxl_addparam_result = false;                                     // AddParam result
+            bool dxl_getdata_result = false;                                      // GetParam result
+
+            int[] dxl10_goal_position = new int[2] { down_position, up_position }; // Goal position
+            int[] dxl5_goal_position = new int[2] { dxl_5_turn_left, dxl_5_turn_right }; // Goal position   
+            int[] dxl5_goal_position_t_1 = new int[3] { dxl_5_turn_left, SET5, dxl_5_turn_right }; // Goal position   
+            int[] dxl9_goal_position = new int[2] { dxl_9_turn_left, dxl_9_turn_right }; // Goal position  
+            int[] dxl3_goal_position = new int[2] { dxl_3_turn_left, dxl_3_turn_right }; // Goal position          
+            int[] dxl2_goal_position = new int[2] { dxl_2_turn_left, dxl_2_turn_right }; // Goal position// 
+
+            byte dxl_error = 0;                                                   // Dynamixel error
+            byte[] dxl_led_value = new byte[2] { 0x00, 0xFF };
+            Int32 dxl1_present_position = 0;
+            Int32 dxl2_present_position = 0;
+            Int32 dxl3_present_position = 0;
+            Int32 dxl4_present_position = 0;
+            Int32 dxl5_present_position = 0;
+            Int32 dxl6_present_position = 0;
+            Int32 dxl9_present_position = 0;
+            Int32 dxl10_present_position = 0;
+            bool check_time = false;
+            bool check_time_santa_tellme = false;
+            bool santa_tellme_flag = false;
+            bool santa_telllme_flag2 = false;
+
+            bool solocheck = false;
+
+            int dance_count = 0;
+
+
+            // Open port
+            if (dynamixel.openPort(port_num))
+            {
+                Console.WriteLine("Succeeded to open the port!");
+            }
+            else
+            {
+                Console.WriteLine("Failed to open the port!");
+                Console.WriteLine("Press any key to terminate...");
+                Console.ReadKey();
+                return;
+            }
+
+            // Set port baudrate
+            if (dynamixel.setBaudRate(port_num, BAUDRATE))
+            {
+                Console.WriteLine("Succeeded to change the baudrate!");
+            }
+            else
+            {
+                Console.WriteLine("Failed to change the baudrate!");
+                Console.WriteLine("Press any key to terminate...");
+                Console.ReadKey();
+                return;
+            }
+
+            Prpesent_position_value(port_num, groupread_num, dxl_addparam_result);
+
+            //Initialized_start(groupread_num, dxl_addparam_result, groupwrite_num, port_num, groupwritegreeting_num); //초기 설정값으로 이동
+
+            //**********************************************************************
+            // Initialize GroupBulkWrite Struct
+
+
+            // Add parameter storage for Dynamixel#1 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#2 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+
+            //dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            // Add parameter storage for Dynamixel#3 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET3, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                return;
+            }
+
+            // Add parameter storage for Dynamixel#4 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL4_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET4, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL4_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#5 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#6 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL6_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET6, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL6_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#9 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                return;
+            }
+            // Add parameter storage for Dynamixel#10 present position value
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                return;
+            }
+
+
+
+            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+            Delay(1000);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, 60);
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2818, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+            dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+
+            Delay(1000);
+
+            dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2073, LEN_PRO_GOAL_POSITION);
+            if (dxl_addparam_result != true)
+            {
+                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                return;
+            }
+            dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+            dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+            //**********************************************************************
+
+
+            Torque(port_num, groupread_num, dxl_error, dxl_comm_result);
+
+
+
+            while (true)
+            {
+
+                Console.WriteLine("Press any key to continue! (or press ESC to quit!)");
+                if (Console.ReadKey().KeyChar == ESC_ASCII_VALUE)
+                    break;
+
+                for (int t = 0; t < 4; t++)
+                {
+                    if (t == 0)
+                    {
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 40);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 40);
+                        for (int r = 0; r < 2; r++) // 도입부 천천히 돌기
+                        {
+                            Console.WriteLine("pattern {0} {1}", t, r);
+                            // Add parameter storage for Dynamixel#1 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl5_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                return;
+                            }
+                            // Add parameter storage for Dynamixel#1 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl9_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                return;
+                            }
+                            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                            do
+                            {
+                                // Bulkread present position and moving status
+                                dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL5_ID);
+                                    return;
+                                }
+
+
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL9_ID);
+                                    return;
+                                }
+
+
+                                // Get Dynamixel#1 present position value
+                                dxl9_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                dxl5_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                            } while (Math.Abs(dxl9_goal_position[index2] - dxl9_present_position) > DXL_MOVING_STATUS_THRESHOLD
+                            && (Math.Abs(dxl5_goal_position[index2] - dxl5_present_position) > DXL_MOVING_STATUS_THRESHOLD));
+
+
+                            // Change goal position
+                            if (index2 == 0)
+                            {
+                                index2 = 1;
+                                index3 = 0;
+                            }
+                            else
+                            {
+                                index2 = 0;
+                                index3 = 1;
+                            }
+                            if (r == 1)
+                            {
+                                Delay(900);
+                            }
+                        }
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                        dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                        dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                    }
+
+                    if (t == 1 || t == 2)
+                    {
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 300);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 300);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL10_ID, ADDR_PRO_GOAL_VELOCITY, 270);
+                        for (int i = 0; i < 32; i++) // 박자타기 2
+                        {
+
+                            Console.WriteLine("pattern {0} {1}", t, i);
+
+                            // Add parameter storage for Dynamixel#1 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl10_goal_position[index], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                                return;
+                            }
+                            // Add parameter storage for Dynamixel#1 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl5_goal_position_t_1[index2], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                return;
+                            }
+                            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                            do
+                            {
+                                // Bulkread present position and moving status
+                                dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL5_ID);
+                                    return;
+                                }
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL10_ID);
+                                    return;
+                                }
+
+
+                                // Get Dynamixel#1 present position value
+                                dxl5_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                            } while (Math.Abs(dxl5_goal_position_t_1[index2] - dxl5_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                            // Change goal position
+                            if (i != 31)
+                                Delay(340);
+                            if (index == 0)
+                            {
+                                index = 1;
+                            }
+                            else if (index == 1)
+                            {
+                                index = 0;
+                            }
+
+                            if (index2 == 0)
+                            {
+                                index2 = 1;
+                                check_time = false;
+                            }
+                            else if (index2 == 1)
+                            {
+                                if (check_time == true)
+                                {
+                                    index2 = 0;
+                                }
+                                else
+                                    index2 = 2;
+                            }
+                            else if (index2 == 2)
+                            {
+                                index2 = 1;
+                                check_time = true;
+                            }
+
+
+                        }
+                        dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+                        dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+
+
+                        //박자타기 3 (좌우)
+                        for (int j = 0; j < 25; j++)
+                        {
+                            Console.WriteLine("pattern {0} {1}", t, j);
+                            // Add parameter storage for Dynamixel#1 goal position
+                            if (j == 24)
+                            {
+                                dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET3, LEN_PRO_GOAL_POSITION);
+                                Delay(380);
+
+                                break;
+
+                            }
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl3_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                return;
+                            }
+                            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                            do
+                            {
+                                // Bulkread present position and moving status
+                                dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL3_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL3_ID);
+                                    return;
+                                }
+
+
+                                // Get Dynamixel#1 present position value
+                                dxl3_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL3_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                            } while (Math.Abs(dxl3_goal_position[index2] - dxl3_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                            // Change goal position
+                            if (index2 == 0)
+                            {
+                                index2 = 1;
+                                index3 = 0;
+                            }
+                            else
+                            {
+                                index2 = 0;
+                                index3 = 1;
+                            }
+
+
+                        }
+                        Delay(200);
+                    }
+
+                    if (t == 3)
+                    {
+                        dynamixel.groupBulkWriteAddParam(groupwritegreeting_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteTxPacket(groupwritegreeting_num);
+                        dynamixel.groupBulkWriteClearParam(groupwritegreeting_num);
+                        while (true)
+                        {
+                            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 60);
+                            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 60);
+
+                            for (int r = 0; r < 10; r++) // 2분 8초대 천천히 돌기
+                            {
+                                Console.WriteLine("pattern {0} {1}", t, r);
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl5_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl9_goal_position[index3], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL5_ID);
+                                        return;
+                                    }
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL9_ID);
+                                        return;
+                                    }
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl9_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    dxl5_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl9_goal_position[index3] - dxl9_present_position) > DXL_MOVING_STATUS_THRESHOLD
+                                && (Math.Abs(dxl5_goal_position[index2] - dxl5_present_position) > DXL_MOVING_STATUS_THRESHOLD));
+
+
+                                // Change goal position
+                                if (index2 == 0)
+                                {
+                                    index2 = 1;
+                                    index3 = 0;
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    index3 = 1;
+                                }
+                                if (r % 3 == 2)
+                                {
+                                    Delay(300);
+                                }
+                            }
+                            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                            dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                            dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+                            dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+                            dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET10, LEN_PRO_GOAL_POSITION);
+
+                            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                            Delay(2500);
+                            break;
+                        }
+
+
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL10_ID, ADDR_PRO_GOAL_VELOCITY, 300);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL3_ID, ADDR_PRO_GOAL_VELOCITY, 300);
+                        index2 = 0;
+                        while (true)
+                        {
+                            for (int a = 0; a < 4; a++) // 산 타 텔미
+                            {
+                                Console.WriteLine("santa pattern {0} {1}", t, a);
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl10_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL10_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl10_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl10_goal_position[index2] - dxl10_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+
+
+                                if (index2 == 0)
+                                {
+                                    if (check_time_santa_tellme == false)
+                                        Delay(300);
+                                    else
+                                        Delay(50);
+                                    index2 = 1;
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    if (check_time_santa_tellme == false)
+                                        Delay(300 / 2);
+                                    else
+                                        Delay(50);
+                                    check_time_santa_tellme = true;
+                                }
+                            }
+                            Delay(1200);
+                            if (santa_tellme_flag == true)
+                                santa_telllme_flag2 = true;
+                            check_time_santa_tellme = false;
+
+
+                            for (int q = 0; q < 4; q++) // 산 타 텔미
+                            {
+                                Console.WriteLine("pattern {0} {1}", t, q);
+                                // Add parameter storage for Dynamixel#1 goal position
+                                if (q == 3)
+                                {
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET3, LEN_PRO_GOAL_POSITION);
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                    break;
+                                }
+                                else
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl3_goal_position[index2], LEN_PRO_GOAL_POSITION);
+
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL3_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL3_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl3_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL3_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl3_goal_position[index2] - dxl3_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                if (index2 == 0)
+                                {
+                                    if (check_time_santa_tellme == false)
+                                        Delay(300);
+                                    else
+                                        Delay(50);
+                                    index2 = 1;
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    if (check_time_santa_tellme == false)
+                                        Delay(300 / 2);
+                                    else
+                                        Delay(50);
+                                    check_time_santa_tellme = true;
+                                }
+                            }
+                            check_time_santa_tellme = false;
+                            santa_tellme_flag = true;
+                            index2 = 0;
+                            if (santa_telllme_flag2 == true)
+                            {
+                                Delay(800);
+                                break;
+                            }
+                            Delay(1200);
+
+                        }
+
+
+
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 250);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 250);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL2_ID, ADDR_PRO_GOAL_VELOCITY, 200);
+
+                        Delay(300);
+                        while (true)
+                        {
+                            if (dance_count == 8)
+                                break;
+                            for (int n = 0; n < 4; n++)
+                            {
+                                Console.WriteLine("pattern {0} {1}", dance_count, n);
+                                // Add parameter storage for Dynamixel#1 goal position
+                                if (n == 3)
+                                {
+                                    dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET9, LEN_PRO_GOAL_POSITION);
+                                    dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET5, LEN_PRO_GOAL_POSITION);
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                    break;
+                                }
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl5_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl9_goal_position[index3], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL5_ID);
+                                        return;
+                                    }
+
+
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL9_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl9_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    dxl5_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl9_goal_position[index3] - dxl9_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                // Change goal position
+                                if (index2 == 0)
+                                {
+                                    index2 = 1;
+                                    index3 = 0;
+                                    Delay(80);
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    index3 = 1;
+                                    Delay(80);
+                                }
+
+                            }
+                            index2 = 0;
+                            Delay(320);
+                            for (int m = 0; m < 3; m++) // 박자 타기4
+                            {
+                                Console.WriteLine("pattern {0} {1}", t, m);
+                                // Add parameter storage for Dynamixel#1 goal position
+                                if (m == 2)
+                                {
+                                    dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET2, LEN_PRO_GOAL_POSITION);
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                    break;
+                                }
+                                else
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl2_goal_position[index2], LEN_PRO_GOAL_POSITION);
+
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL2_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl2_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl2_goal_position[index2] - dxl2_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                // Change goal position
+                                if (index2 == 0)
+                                {
+                                    index2 = 1;
+                                    index3 = 0;
+                                    Delay(80);
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    index3 = 1;
+                                    Delay(80);
+                                }
+                            }
+                            index2 = 0;
+                            dance_count++;
+                            Delay(320);
+                        }
+                        dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+                        dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                        dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                        Delay(100);
+                    }
+
+
+
+
+                    dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL10_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+                    index2 = 0;
+
+                    for (int a = 0; a < 21; a++) // 박자 타기4
+                    {
+                        if (t == 3 && a == 18)
+                        {
+                            break;
+                        }
+                        Console.WriteLine("pattern {0} {1}", t, a);
+                        // Add parameter storage for Dynamixel#1 goal position
+                        dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl10_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                        if (dxl_addparam_result != true)
+                        {
+                            Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                            return;
+                        }
+                        dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                        dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                        if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                            Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                        do
+                        {
+                            // Bulkread present position and moving status
+                            dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                            dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                            if (dxl_getdata_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL10_ID);
+                                return;
+                            }
+
+                            // Get Dynamixel#1 present position value
+                            dxl10_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL10_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+                        } while (Math.Abs(dxl10_goal_position[index2] - dxl10_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+                        // Change goal position
+                        if (index2 == 0)
+                        {
+                            index2 = 1;
+                            index3 = 0;
+                        }
+                        else
+                        {
+                            index2 = 0;
+                            index3 = 1;
+                        }
+                        if (a == 20)
+                        {
+                            break;
+                        }
+                        if (a % 5 == 0)
+                            Delay(d_time);
+                        else if (a % 5 == 1)
+                            Delay(d_time / 2);
+                        else if (a % 5 == 2)
+                            Delay(d_time - 110);
+                        else if (a % 5 == 3)
+                            Delay(d_time / 2 - 40);
+                        else if (a % 5 == 4)
+                            Delay(d_time / 8 - 20);
+                    }
+                }
+
+                ///홀리졸리크리스마스
+                ///
+
+
+                Initialized_end(groupread_num, dxl_addparam_result, groupwrite_num, port_num, groupwritegreeting_num); //초기 설정값으로 이동
+
+
+
+
+
+                while (true)
+                {
+                    Console.WriteLine("Press any key to continue! (or press ESC to quit!)");
+                    if (Console.ReadKey().KeyChar == ESC_ASCII_VALUE)
+                        break;
+
+                    for (int i = 0; i < 3; i++)
+                    {
+                        //**********************************************************************
+                        //마지막 마무리
+                        if (i == 2)
+                        {
+                            for (int j = 0; j < 20; j++)
+                            {
+
+                                Console.WriteLine("pattern {0} {1}", i, j);
+
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position2[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                                    return;
+                                }
+                                /*
+                                // Add parameter storage for Dynamixel#3 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position2[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                    return;
+                                }
+                                */
+
+                                // Bulkwrite goal position and LED value
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                // Clear bulkwrite parameter storage
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL1_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl3_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl_goal_position2[index2] - dxl3_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                // Change goal position
+                                if (index2 == 0)
+                                {
+                                    index2 = 1;
+                                    index3 = 0;
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    index3 = 1;
+                                }
+                                //여기찐막 마무리 순간
+                                if (j == 19)
+                                {
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+                                    if (dxl_addparam_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                                        return;
+                                    }
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    // Clear bulkwrite parameter storage
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+                                    Delay(6000);
+                                    // Add parameter storage for Dynamixel#3 goal position
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1800, LEN_PRO_GOAL_POSITION);
+                                    if (dxl_addparam_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                        return;
+                                    }
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    // Clear bulkwrite parameter storage
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1450, LEN_PRO_GOAL_POSITION);
+                                    if (dxl_addparam_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                        return;
+                                    }
+
+
+                                }
+
+                                else
+                                    Delay(445);
+                            }
+                            break;
+                        }
+
+
+                        //1번째 까딱
+                        for (int j = 0; j < 31; j++)
+                        {
+
+                            if ((i == 0 || i == 1) && j == 15)
+                            {
+                                Delay(800);
+                            }
+
+
+                            if (i == 1)
+                            {
+
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 50);
+                            }
+
+
+
+
+
+                            // 기타솔로
+                            if (i == 1 && j == 15)
+                            {
+
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                                    return;
+                                }
+
+                                index2 = 0;
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 150);
+                                for (int k = 0; k < 27; k++)
+                                {
+                                    Console.WriteLine("solo {0} ", k);
+
+                                    // Add parameter storage for Dynamixel#1 goal position
+                                    dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position_solo[index2], LEN_PRO_GOAL_POSITION);
+                                    if (dxl_addparam_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                        return;
+                                    }
+
+
+                                    // Bulkwrite goal position and LED value
+                                    dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    // Clear bulkwrite parameter storage
+                                    dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                                    do
+                                    {
+                                        // Bulkread present position and moving status
+                                        dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                        if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                            Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                        dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                        if (dxl_getdata_result != true)
+                                        {
+                                            Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL9_ID);
+                                            return;
+                                        }
+
+
+                                        // Get Dynamixel#1 present position value
+                                        dxl3_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                    } while (Math.Abs(dxl_goal_position_solo[index2] - dxl3_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                    // Change goal position
+                                    if (index2 == 0)
+                                    {
+                                        index2 = 1;
+                                        index3 = 0;
+                                    }
+                                    else
+                                    {
+                                        index2 = 0;
+                                        index3 = 1;
+                                    }
+                                    if ((k < 5 && k > 2) || (9 < k && k < 12) || (16 < k && k < 19))
+                                        Delay(475);
+                                    else
+                                        Delay(100);
+
+                                }
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1850, LEN_PRO_GOAL_POSITION);
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2413, LEN_PRO_GOAL_POSITION);
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1000, LEN_PRO_GOAL_POSITION);
+                                dynamixel.groupBulkWriteTxPacket(groupwritesolo_num);
+                                dynamixel.groupBulkWriteClearParam(groupwritesolo_num);
+                                Delay(12500);
+
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1365, LEN_PRO_GOAL_POSITION);
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 3000, LEN_PRO_GOAL_POSITION);
+                                dynamixel.groupBulkWriteAddParam(groupwritesolo_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, 158);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 80);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                                dynamixel.groupBulkWriteTxPacket(groupwritesolo_num);
+                                dynamixel.groupBulkWriteClearParam(groupwritesolo_num);
+                                solocheck = true;
+                            }
+
+                            if (solocheck == false)
+                            {
+                                Console.WriteLine("pattern {0} {1}", i, j);
+
+                                // Add parameter storage for Dynamixel#1 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position2[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                                    return;
+                                }
+                                /*
+                                // Add parameter storage for Dynamixel#3 goal position
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position2[index2], LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                    return;
+                                }
+                                */
+
+                                // Bulkwrite goal position and LED value
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                // Clear bulkwrite parameter storage
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                                do
+                                {
+                                    // Bulkread present position and moving status
+                                    dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                    if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                        Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                    dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                    if (dxl_getdata_result != true)
+                                    {
+                                        Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL1_ID);
+                                        return;
+                                    }
+
+
+                                    // Get Dynamixel#1 present position value
+                                    dxl3_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+
+                                } while (Math.Abs(dxl_goal_position2[index2] - dxl3_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                                // Change goal position
+                                if (index2 == 0)
+                                {
+                                    index2 = 1;
+                                    index3 = 0;
+                                }
+                                else
+                                {
+                                    index2 = 0;
+                                    index3 = 1;
+                                }
+                                Delay(455);
+                            }
+                        }
+
+                        //회전코드
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 80);
+                        dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+                        for (int r = 0; r < 6; r++) //5
+                        {
+
+                            if (i == 2)
+                            {
+
+                                break;
+                            }
+
+
+
+                            // Add parameter storage for Dynamixel#1 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position[index2], LEN_PRO_GOAL_POSITION);
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                return;
+                            }
+
+                            // Add parameter storage for Dynamixel#2 goal position
+                            dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, (UInt32)dxl_goal_position1[index3], LEN_PRO_GOAL_POSITION);
+
+                            if (dxl_addparam_result != true)
+                            {
+                                Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                return;
+                            }
+
+                            // Bulkwrite goal position and LED value
+                            dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                            if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                            // Clear bulkwrite parameter storage
+                            dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+                            do
+                            {
+
+                                // Bulkread present position and moving status
+                                dynamixel.groupBulkReadTxRxPacket(groupread_num);
+                                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL5_ID);
+                                    return;
+                                }
+
+                                dxl_getdata_result = dynamixel.groupBulkReadIsAvailable(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                if (dxl_getdata_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkRead getdata failed", DXL9_ID);
+                                    return;
+                                }
+
+                                // Get Dynamixel#1 present position value
+                                dxl1_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL5_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+
+                                // Get Dynamixel#2 present position value
+                                dxl2_present_position = (Int32)dynamixel.groupBulkReadGetData(groupread_num, DXL9_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+                                Console.WriteLine("Rotation {0}: {1}", i, r);
+                                //Console.WriteLine("[ID: {0}] Present Position : {1} [ID: {2}] Present Position : {3}", DXL5_ID, dxl1_present_position, DXL9_ID, dxl2_present_position);
+
+                            } while (Math.Abs(dxl_goal_position[index2] - dxl1_present_position) > DXL_MOVING_STATUS_THRESHOLD);
+
+
+                            // Change goal position
+                            if (index2 == 0)
+                            {
+                                index2 = 1;
+                                index3 = 0;
+                            }
+                            else
+                            {
+                                index2 = 0;
+                                index3 = 1;
+                            }
+
+                            Delay(227); //227
+
+
+
+
+
+                            //1번째 중간에 멈추는 지점 
+                            if (((i == 0) && (r == 5)) || ((i == 1) && (r == 5)) || ((i == 2) && (r == 8)))
+                            {
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, 400);
+
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL1_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, SET1, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL1_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#2 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL2_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2073, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL2_ID);
+                                    return;
+                                }
+
+                                //dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                // Add parameter storage for Dynamixel#3 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL3_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1385, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL3_ID);
+                                    return;
+                                }
+
+                                // Add parameter storage for Dynamixel#4 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL4_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 1399, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL4_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#5 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL5_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 3000, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL5_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#6 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL6_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 4105, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL6_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#9 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL9_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 2000, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL9_ID);
+                                    return;
+                                }
+                                // Add parameter storage for Dynamixel#10 present position value
+                                dxl_addparam_result = dynamixel.groupBulkWriteAddParam(groupwrite_num, DXL10_ID, ADDR_PRO_GOAL_POSITION, LEN_PRO_GOAL_POSITION, 3049, LEN_PRO_GOAL_POSITION);
+                                if (dxl_addparam_result != true)
+                                {
+                                    Console.WriteLine("[ID: {0}] groupBulkWrite addparam failed", DXL10_ID);
+                                    return;
+                                }
+                                dynamixel.groupBulkWriteTxPacket(groupwrite_num);
+                                dynamixel.groupBulkWriteClearParam(groupwrite_num);
+
+
+                                //dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 80);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL1_ID, ADDR_PRO_GOAL_VELOCITY, 158);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_GOAL_VELOCITY, 80);
+                                dynamixel.write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_GOAL_VELOCITY, DXL_GOAL_VEL);
+
+                                if (r != 4)
+                                {
+                                    Delay(2800);
+                                }
+
+                                break;
+
+                            }
+                        }
+                    }
+                }
+
+                // Disable Dynamixel#1 Torque
+                dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL5_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_DISABLE);
+                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                {
+                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                }
+                else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+                {
+                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+                }
+
+                // Disable Dynamixel#2 Torque
+                dynamixel.write1ByteTxRx(port_num, PROTOCOL_VERSION, DXL9_ID, ADDR_PRO_TORQUE_ENABLE, TORQUE_DISABLE);
+                if ((dxl_comm_result = dynamixel.getLastTxRxResult(port_num, PROTOCOL_VERSION)) != COMM_SUCCESS)
+                {
+                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getTxRxResult(PROTOCOL_VERSION, dxl_comm_result)));
+                }
+                else if ((dxl_error = dynamixel.getLastRxPacketError(port_num, PROTOCOL_VERSION)) != 0)
+                {
+                    Console.WriteLine(Marshal.PtrToStringAnsi(dynamixel.getRxPacketError(PROTOCOL_VERSION, dxl_error)));
+                }
+
+                // Close port
+                dynamixel.closePort(port_num);
+
+                return;
+            }
+        }
+    }
+}
+
+
+
