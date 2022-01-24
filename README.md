@@ -1,6 +1,6 @@
 # Busking_robot
 
 
-<iframe width="1280" height="720" src="https://www.youtube.com/embed/Rr56LUF85Ec" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![버스킹봇](https://img.youtube.com/vi/Rr56LUF85Ec/0.jpg)](https://www.youtube.com/watch?v=Rr56LUF85Ec) 
 
 https://youtu.be/Rr56LUF85Ec
