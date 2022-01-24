@@ -1,0 +1,15 @@
+1.기본 동작방법
+R+3.0 : https://emanual.robotis.com/docs/kr/software/rplustask3/
+엔지니어 키트 1 : https://emanual.robotis.com/docs/kr/edu/engineer/kit1/
+CM550  : https://emanual.robotis.com/docs/kr/parts/controller/cm-550/
+
+2. 하드웨어 세팅
+U2D2 : http://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_sdk/overview/
+
+3. 다이나믹셀 위자드 사용법
+wizard : https://emanual.robotis.com/docs/kr/software/dynamixel/dynamixel_wizard2/
+
+4. 예제 코드들 
+예제코드 : http://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_sdk/overview/
+
+5. C# 파일공유 
